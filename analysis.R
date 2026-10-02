@@ -1,41 +1,61 @@
 # ============================================================
-# Translation of Do-File-Lucas.do
+# Translation of Do-File-Lucas.do to R
 # ============================================================
 
 # Packages
 required_packages <- c(
   "dplyr", "haven", "readr")
-  
-# Below is a copy-paste R translation. It assumes your Stata data have already 
-# been imported into a data frame called `dat`, and that the two merge files 
-# are available as R-readable files.
-
-# ============================================================
-# Lucas analysis: Stata do-file translated to R
-# Assumption: input data frame is called `dat`
-# ============================================================
-
+library(haven)
 library(dplyr)
-library(forcats)
+library(tidyr)
 library(nnet)
 library(splines)
-library(Hmisc)
-library(rstatix)
 library(broom)
-library(tableone)
 
-# ----------------------------
-# Sample restriction
-# ----------------------------
 
-dat <- dat %>%
-  filter(nightever != 1) %>%
-  slice(1:1475)
+# Read in data
+data_dir <- "data"
+original_dir <- file.path(data_dir, "original_database")
 
-# Stata mi extract 0, clear:
-# This has no direct equivalent unless dat was imported from a
-# multiply-imputed Stata dataset. Confirm that dat is the intended
-# complete/non-imputed dataset.
+read_dta_checked <- function(path, encoding = "windows-1252") {
+  if (!file.exists(path)) {
+    stop("File not found: ", normalizePath(path, mustWork = FALSE))
+  }
+  
+  message("Reading: ", path)
+  
+  haven::read_dta(
+    file = path,
+    encoding = encoding
+  )
+}
+
+main <- read_dta_checked(
+  file.path(data_dir, "MCC ALAN BCNMDR Work.dta")
+)
+
+all_work <- read_dta_checked(
+  file.path(data_dir, "MCC ALAN all WORK.dta")
+)
+
+all_work_ss <- read_dta_checked(
+  file.path(data_dir, "MCC ALAN all WORK SS.dta")
+)
+
+additional_alan <- read_dta_checked(
+  file.path(original_dir, "MCC_additional ALAN variables.dta")
+)
+
+requested_variables <- read_dta_checked(
+  file.path(
+    original_dir,
+    "MCC_ALAN_obesity_analysis_requested_variables_20240918.dta"
+  )
+)
+
+# sample restriction
+dat <- main %>%
+  filter(nightever != 1)
 
 # ----------------------------
 # Missing-value regrouping
