@@ -54,18 +54,30 @@ requested_variables <- read_dta_checked(
   )
 )
 
-# merge missing sleep variables to main dataset
-dat <- main %>%
-  filter(nightever != 1) %>%
-  left_join(
-    all_work_ss %>%
-      select(id_study, msw, sdw, sjlrel, sjl_c, sow, sof),
-    by = "id_study"
-  )
+# ============================================================
+# Build separate analysis datasets
+# ============================================================
 
-# sample restriction
-dat <- dat %>%
+# Indoor ALAN: all provinces, n = 3,420
+dat_indoor <- all_work_ss %>%
   filter(nightever != 1)
+
+# Outdoor ALAN: Barcelona and Madrid, n = 1,475
+dat_outdoor <- main %>%
+  filter(nightever != 1)
+
+dat <- dat_indoor
+
+# Use the dataset required for this run
+# Set to "indoor" for the indoor Table 1
+# Set to "outdoor" for the outdoor Table 1
+analysis_type <- "indoor"
+
+dat <- if (analysis_type == "indoor") {
+  dat_indoor
+} else {
+  dat_outdoor
+}
 
 # ----------------------------
 # Missing-value regrouping
@@ -412,57 +424,71 @@ dat <- dat %>%
   )
 
 
+library(dplyr)
+library(labelled)
+
 # ----------------------------
 # Modelling dataset
 # ----------------------------
 
-# filter only on necessary variables
 required_vars <- c(
   "id_study", "nightever", "area",
   "a3_sexe", "a4_edat", "education_basic_final",
   "score_SE", "bmi_actual", "diabetes", "waist_hip",
   "g13_tiempo_dormir", "g14_problemas_sue_o",
   "g15_list_probl_medic", "g20_siesta", "g21_tiempo_siesta",
+  
+  # Sleep-timing variables
   "a2a_hora_apagar_luces", "a2b_min_apagar_luces",
   "a3_min_conciliar", "a4a_hora_despertar",
   "a4b_min_despertar", "a8a_hora_apagar_luces",
   "a8b_min_apagar_luces", "a9_min_conciliar",
   "a10a_hora_despertar", "a10b_min_despertar",
-  "fumador_ever", "mets_act_10_2_total_rec",
+  
+  # Smoking and lifestyle
+  "fumador_presente",
+  "mets_act_10_2_total_rec",
   "gra_fruits", "gra_vegetables", "t_energy",
+  
+  # Environmental exposure and chronotype
   "uvi_longest", "ndvi_500_longest",
-  "msf", "msf_c5", "indoorlight_lab",
+  "msf", "msf_c3", "msf_c5",
+  "indoorlight_lab",
   "msibg_current", "msibg_longest",
   "msigr_longest", "impmsigr_longest",
   "melgr_longest", "impmelgr_longest",
+  
+  # Sleep-derived variables already available
   "msw", "sdw", "sjlrel", "sjl_c",
-  "sow", "sof", "sl_group"
+  "sow", "sof", "sl_group",
+  
+  # Family-history variable from the merge
+  "fam_history_diabetes"
 )
 
-# Add every variable created by the script
 derived_vars <- c(
   "centre_num", "diabetes_new", "WHR_cat",
   "bmi_WHO", "bmi_2", "bmi_3", "bmi_cat", "obesity",
   "sleep_cat", "sleep_cat_3", "bedtime_group",
   "siesta_general", "siesta_60", "siesta_frecat",
-  "siesta_ultimate", "MSIbg_group_c", "MSIbg_group_l",
+  "siesta_ultimate",
+  "MSIbg_group_c", "MSIbg_group_l",
   "MSIgr_group_l", "ImpMSIgr_group_l",
   "Melgr_group_l", "ImpMelgr_group_l",
   "ALAN_combined_norm", "ALAN_combined_cat",
   "SHSS", "SHSS_group", "SHSS3", "SHSS3_group",
   "EHSS", "EHSS_group", "EHSS3_group",
   "sl_mean", "sleep_latency_w", "sleep_latency_f",
-  "bed_time_new", "sjl_abs", "gra_fruits_group", "gra_vegetables_group",
+  "bed_time_new", "sjl_abs",
+  "gra_fruits_group", "gra_vegetables_group",
   "t_energy_group", "uvi_longest_group"
 )
 
 final_vars <- unique(c(required_vars, derived_vars))
 
 dat_final <- dat %>%
-  select(any_of(final_vars))
-
-# clearer naming and labels
-dat_final <- dat_final %>%
+  select(any_of(final_vars)) %>%
+  
   rename(
     participant_id = id_study,
     night_shift_ever = nightever,
@@ -477,17 +503,24 @@ dat_final <- dat_final %>%
     sleep_medication = g15_list_probl_medic,
     nap_frequency = g20_siesta,
     nap_duration = g21_tiempo_siesta,
-    smoking_ever = fumador_ever,
+    
+    smoking_status = fumador_presente,
+    
     physical_activity = mets_act_10_2_total_rec,
     fruits = gra_fruits,
     vegetables = gra_vegetables,
     energy_intake = t_energy,
     uvi = uvi_longest,
     ndvi = ndvi_500_longest,
-    chronotype = msf_c5,
+    
+    chronotype_3 = msf_c3,
+    chronotype_5 = msf_c5,
+    
     indoor_alan = indoorlight_lab,
     diabetes_original = diabetes,
     diabetes_binary = diabetes_new,
+    family_history_diabetes = fam_history_diabetes,
+    
     centre = centre_num,
     waist_hip_risk = WHR_cat,
     bmi_who = bmi_WHO,
@@ -495,22 +528,27 @@ dat_final <- dat_final %>%
     bmi_three_category = bmi_3,
     bmi_category = bmi_cat,
     obesity_status = obesity,
+    
     sleep_category = sleep_cat,
     sleep_duration_category = sleep_cat_3,
+    
     ms_bg_current = msibg_current,
     ms_bg_longest = msibg_longest,
     ms_gr_longest = msigr_longest,
     impaired_ms_gr_longest = impmsigr_longest,
     melanopic_pigment_gr_longest = melgr_longest,
     impaired_melanopic_pigment_gr_longest = impmelgr_longest,
+    
     ms_bg_current_group = MSIbg_group_c,
     ms_bg_longest_group = MSIbg_group_l,
     ms_gr_longest_group = MSIgr_group_l,
     impaired_ms_gr_group = ImpMSIgr_group_l,
     melanopic_pigment_gr_group = Melgr_group_l,
     impaired_melanopic_pigment_gr_group = ImpMelgr_group_l,
+    
     alan_combined_normalized = ALAN_combined_norm,
     alan_combined_category = ALAN_combined_cat,
+    
     simplified_healthy_sleep_score = SHSS,
     simplified_healthy_sleep_group = SHSS_group,
     revised_sleep_score = SHSS3,
@@ -518,6 +556,7 @@ dat_final <- dat_final %>%
     extended_healthy_sleep_score = EHSS,
     extended_healthy_sleep_group = EHSS_group,
     extended_sleep_score_3_group = EHSS3_group,
+    
     weighted_sleep_latency = sl_mean,
     sleep_latency_category = sl_group,
     sleep_latency_workdays = sleep_latency_w,
@@ -529,11 +568,13 @@ dat_final <- dat_final %>%
     relative_social_jetlag = sjlrel,
     social_jetlag_category = sjl_c,
     bedtime = bed_time_new,
+    
     fruits_tertile = gra_fruits_group,
     vegetables_tertile = gra_vegetables_group,
     energy_intake_tertile = t_energy_group,
     uvi_tertile = uvi_longest_group
   ) %>%
+  
   set_variable_labels(
     participant_id = "Study participant ID",
     night_shift_ever = "Ever performed night-shift work",
@@ -548,17 +589,23 @@ dat_final <- dat_final %>%
     sleep_medication = "Use of medication to sleep",
     nap_frequency = "Nap frequency",
     nap_duration = "Nap duration",
-    smoking_ever = "Ever smoked",
+    
+    smoking_status = "Smoking status",
     physical_activity = "Physical activity category",
     fruits = "Fruit intake",
     vegetables = "Vegetable intake",
     energy_intake = "Total energy intake",
     uvi = "Longest ultraviolet radiation exposure",
     ndvi = "Longest NDVI exposure within 500 m",
-    chronotype = "Chronotype: five categories",
+    
+    chronotype_3 = "Chronotype: morning, intermediate, evening",
+    chronotype_5 = "Chronotype: five categories",
     indoor_alan = "Indoor artificial light exposure",
+    
     diabetes_original = "Diabetes diagnosis and treatment category",
     diabetes_binary = "Diabetes status: non-diabetic/diabetic",
+    family_history_diabetes = "Family history of diabetes",
+    
     centre = "Study centre",
     waist_hip_risk = "Waist-to-hip-ratio risk category",
     bmi_who = "WHO BMI category",
@@ -566,22 +613,27 @@ dat_final <- dat_final %>%
     bmi_three_category = "BMI: normal weight, overweight, obese",
     bmi_category = "BMI category",
     obesity_status = "Obesity status",
+    
     sleep_category = "Sleep-duration category",
     sleep_duration_category = "Sleep duration: optimal, short, long",
+    
     ms_bg_current = "Current melatonin suppression index: blue/green channel",
     ms_bg_longest = "Longest melatonin suppression index: blue/green channel",
     ms_gr_longest = "Longest melatonin suppression index: green/red channel",
     impaired_ms_gr_longest = "Impaired MSI: green/red channel",
     melanopic_pigment_gr_longest = "Longest melanopic pigment: green/red channel",
     impaired_melanopic_pigment_gr_longest = "Impaired melanopic pigment: green/red channel",
+    
     ms_bg_current_group = "Current MSI blue/green channel: tertiles",
     ms_bg_longest_group = "Longest MSI blue/green channel: tertiles",
     ms_gr_longest_group = "Longest MSI green/red channel: quintiles",
     impaired_ms_gr_group = "Impaired MSI green/red channel: quintiles",
     melanopic_pigment_gr_group = "Melanopic pigment green/red channel: quintiles",
     impaired_melanopic_pigment_gr_group = "Impaired melanopic pigment green/red channel: quintiles",
+    
     alan_combined_normalized = "Combined normalized indoor and outdoor ALAN",
     alan_combined_category = "Combined ALAN exposure category",
+    
     simplified_healthy_sleep_score = "Simplified Healthy Sleep Score",
     simplified_healthy_sleep_group = "Simplified Healthy Sleep Score category",
     revised_sleep_score = "Revised Simplified Healthy Sleep Score",
@@ -589,6 +641,7 @@ dat_final <- dat_final %>%
     extended_healthy_sleep_score = "Extended Healthy Sleep Score",
     extended_healthy_sleep_group = "Extended Healthy Sleep Score category",
     extended_sleep_score_3_group = "Extended sleep score: three categories",
+    
     weighted_sleep_latency = "Weighted mean sleep latency",
     sleep_latency_category = "Sleep latency: ≤20 vs >20 minutes",
     sleep_latency_workdays = "Sleep latency on workdays",
@@ -600,12 +653,14 @@ dat_final <- dat_final %>%
     relative_social_jetlag = "Relative social jet lag",
     social_jetlag_category = "Social jet-lag category",
     bedtime = "Bedtime in decimal hours",
+    
     fruits_tertile = "Fruit intake tertile",
     vegetables_tertile = "Vegetable intake tertile",
     energy_intake_tertile = "Energy-intake tertile",
     uvi_tertile = "UVI tertile"
   )
 
+# Complete-case modelling dataset
 model_dat <- dat_final %>%
   filter(
     !is.na(obesity_status),
@@ -616,7 +671,7 @@ model_dat <- dat_final %>%
     !is.na(education),
     !is.na(socioeconomic_score),
     !is.na(physical_activity),
-    !is.na(smoking_ever),
+    !is.na(smoking_status),
     !is.na(fruits_tertile),
     !is.na(vegetables_tertile),
     !is.na(energy_intake_tertile)
@@ -633,7 +688,7 @@ model_dat <- dat_final %>%
         education,
         socioeconomic_score,
         physical_activity,
-        smoking_ever,
+        smoking_status,
         fruits_tertile,
         vegetables_tertile,
         energy_intake_tertile,
@@ -648,12 +703,13 @@ model_dat <- dat_final %>%
         siesta_ultimate,
         bedtime_group,
         sleep_problems,
-        sleep_medication
+        sleep_medication,
+        family_history_diabetes,
+        chronotype_3
       ),
       as.factor
     )
   )
 
-# save to rds
 saveRDS(dat_final, file = "data/cleaned_analysis_data.rds")
 saveRDS(model_dat, file = "data/model_data.rds")
