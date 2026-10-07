@@ -451,7 +451,8 @@ derived_vars <- c(
   "SHSS", "SHSS_group", "SHSS3", "SHSS3_group",
   "EHSS", "EHSS_group", "EHSS3_group",
   "sl_mean", "sleep_latency_w", "sleep_latency_f",
-  "bed_time_new", "sjl_abs"
+  "bed_time_new", "sjl_abs", "gra_fruits_group", "gra_vegetables_group",
+  "t_energy_group", "uvi_longest_group"
 )
 
 final_vars <- unique(c(required_vars, derived_vars))
@@ -459,7 +460,7 @@ final_vars <- unique(c(required_vars, derived_vars))
 dat_final <- dat %>%
   select(any_of(final_vars))
 
-model_dat <- dat %>%
+model_dat <- dat_final %>%
   filter(
     !is.na(obesity),
     !is.na(diabetes_new),
@@ -491,5 +492,5 @@ model_dat <- dat %>%
   )
 
 # save to rds
-saveRDS(dat, file = "data/cleaned_analysis_data.rds")
+saveRDS(dat_final, file = "data/cleaned_analysis_data.rds")
 saveRDS(model_dat, file = "data/model_data.rds")
