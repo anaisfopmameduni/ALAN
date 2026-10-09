@@ -1,22 +1,32 @@
-# requirements
+#flowchart with exclusion and missing
+
+
+
+# ============================================================
+# Descriptive table by indoor and outdoor ALAN exposure
+# ============================================================
+
 library(dplyr)
-library(gtsummary)
+library(tidyr)
+library(purrr)
+library(readr)
 library(gt)
-
-# read in previously saved data
-dat <- readRDS("data/cleaned_analysis_data.rds")
-
-model_dat <- readRDS("data/model_data.rds")
-
 library(gtsummary)
-library(gt)
+
+# ------------------------------------------------------------
+# Load prepared analysis datasets
+# ------------------------------------------------------------
+
+indoor_dat <- readRDS("data/cleaned_analysis_data_indoor.rds")
+outdoor_dat <- readRDS("data/cleaned_analysis_data_outdoor.rds")
+
 
 # Three outdoor ALAN groups:
 # Very low = category 1
 # Intermediate = categories 2, 3, and 4
 # Very high = category 5
 
-dat <- dat %>%
+dat <- outdoor_dat %>%
   mutate(
     outdoor_alan_3 = case_when(
       as.character(ms_gr_longest_group) == "1" ~ "Very low",
@@ -39,7 +49,7 @@ dat <- dat %>%
     )
   )
 
-table1_indoor <- dat %>%
+table1_indoor <- indoor_dat %>%
   select(
     age_years,
     sex,
