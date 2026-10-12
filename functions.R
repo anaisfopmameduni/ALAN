@@ -73,38 +73,60 @@ prepare_analysis_data <- function(dat) {
   
   dat <- dat %>%
     mutate(
-      sleep_cat = cut(
-        g13_tiempo_dormir,
-        breaks = c(-Inf, 6, 7, 8, 9, Inf),
-        labels = c("<=6h", "7h", "8h", ">=9h", NA),
-        right = TRUE
+      # Stata: egen sleep_cat = cut(g13_tiempo_dormir),
+      #                  at(2,6,7,8,9,12)
+      # Then: recode sleep_cat (2=.)
+      sleep_cat_code = case_when(
+        g13_tiempo_dormir >= 2  & g13_tiempo_dormir < 6  ~ 2,
+        g13_tiempo_dormir >= 6  & g13_tiempo_dormir < 7  ~ 6,
+        g13_tiempo_dormir >= 7  & g13_tiempo_dormir < 8  ~ 7,
+        g13_tiempo_dormir >= 8  & g13_tiempo_dormir < 9  ~ 8,
+        g13_tiempo_dormir >= 9  & g13_tiempo_dormir < 12 ~ 9,
+        TRUE ~ NA_real_
       ),
-      sleep_cat = as.character(sleep_cat),
-      sleep_cat = if_else(
-        g13_tiempo_dormir >= 7 & g13_tiempo_dormir < 8,
-        "7h",
-        sleep_cat
+      sleep_cat_code = na_if(sleep_cat_code, 2),
+      
+      # Text labels used later by the SHSS code
+      sleep_cat = case_when(
+        sleep_cat_code == 6 ~ "<=6h",
+        sleep_cat_code == 7 ~ "7h",
+        sleep_cat_code == 8 ~ "8h",
+        sleep_cat_code == 9 ~ ">=9h",
+        TRUE ~ NA_character_
       ),
       sleep_cat = factor(
         sleep_cat,
         levels = c("<=6h", "7h", "8h", ">=9h")
       ),
+      
+      # Stata recodes sleep_cat codes 6, 7, 8, 9 to 2, 1, 1, 3
       sleep_cat_3 = case_when(
-        g13_tiempo_dormir <= 6 ~ 2,
-        g13_tiempo_dormir %in% c(7, 8) ~ 1,
-        g13_tiempo_dormir >= 9 ~ 3,
+        sleep_cat_code == 6 ~ 2,
+        sleep_cat_code %in% c(7, 8) ~ 1,
+        sleep_cat_code == 9 ~ 3,
         TRUE ~ NA_real_
       ),
+      
       siesta_general = case_when(
         g20_siesta == 0 ~ 0,
         g20_siesta %in% 1:7 ~ 1,
         TRUE ~ NA_real_
       ),
+      
+      # Stata: egen siesta_60 = cut(g21_tiempo_siesta),
+      #                         at(5,60,1000)
+      # Then: recode siesta_60 (5=0) (60=1)
       siesta_60 = case_when(
-        g21_tiempo_siesta < 60 ~ 0,
-        g21_tiempo_siesta >= 60 ~ 1,
+        g20_siesta == 0 ~ 0,  # Does not nap: not a long nap
+        g20_siesta > 0 &
+          g21_tiempo_siesta >= 60 &
+          g21_tiempo_siesta < 1000 ~ 1,
+        g20_siesta > 0 &
+          g21_tiempo_siesta >= 5 &
+          g21_tiempo_siesta < 60 ~ 0,
         TRUE ~ NA_real_
       ),
+      
       siesta_frecat = case_when(
         g20_siesta == 0 ~ 0,
         g20_siesta %in% 1:2 ~ 1,
@@ -112,13 +134,47 @@ prepare_analysis_data <- function(dat) {
         g20_siesta == 7 ~ 3,
         TRUE ~ NA_real_
       ),
+      
       siesta_ultimate = case_when(
         siesta_general == 0 ~ 0,
         siesta_60 == 0 & siesta_general != 0 ~ 1,
         siesta_60 == 1 & siesta_general != 0 ~ 2,
         TRUE ~ NA_real_
       )
-    )
+    ) %>%
+    select(-sleep_cat_code)
+  
+  shss_vars <- c(
+    "sleep_cat",
+    "g14_problemas_sue_o",
+    "g15_list_probl_medic",
+    "siesta_60"
+  )
+  
+  print(data.frame(
+    variable = shss_vars,
+    missing_n = sapply(dat[shss_vars], \(x) sum(is.na(x))),
+    missing_pct = sapply(dat[shss_vars], \(x) mean(is.na(x)) * 100)
+  ))
+  
+  cat(
+    "Complete on Do-file SHSS fields:",
+    sum(complete.cases(dat[c("sleep_cat", "g14_problemas_sue_o", "siesta_60")])),
+    "\n"
+  )
+  
+  print(table(
+    cut(
+      dat$g21_tiempo_siesta,
+      breaks = c(-Inf, 5, 60, 1000, Inf),
+      right = FALSE
+    ),
+    useNA = "ifany"
+  ))
+  
+  print(dat %>%
+          filter(is.na(siesta_60)) %>%
+          count(g21_tiempo_siesta, sort = TRUE))
   
   # ----------------------------
   # Bedtime
@@ -223,34 +279,37 @@ prepare_analysis_data <- function(dat) {
   
   dat <- dat %>%
     mutate(
-      SHSS = if_else(
-        rowSums(
-          cbind(
-            sleep_cat %in% c("<=6h", ">=9h"),
-            g14_problemas_sue_o == 1,
-            g15_list_probl_medic == 1,
-            siesta_60 == 1
-          ),
-          na.rm = FALSE
-        ) == rowSums(
-          !is.na(cbind(
-            sleep_cat,
-            g14_problemas_sue_o,
-            g15_list_probl_medic,
-            siesta_60
-          ))
-        ),
-        rowSums(
-          cbind(
-            sleep_cat %in% c("<=6h", ">=9h"),
-            g14_problemas_sue_o == 1,
-            g15_list_probl_medic == 1,
-            siesta_60 == 1
-          ),
-          na.rm = FALSE
-        ),
-        NA_real_
+      SHSS = 0,
+      SHSS = SHSS + if_else(
+        is.na(sleep_cat) | sleep_cat %in% c(">=9h"),
+        1,
+        0
       ),
+      SHSS = SHSS + if_else(
+        !is.na(g14_problemas_sue_o) & g14_problemas_sue_o == 1,
+        1,
+        0
+      ),
+      SHSS = SHSS + if_else(
+        !is.na(g15_list_probl_medic) & g15_list_probl_medic == 1,
+        1,
+        0
+      ),
+      SHSS = SHSS + if_else(
+        !is.na(siesta_60) & siesta_60 == 1,
+        1,
+        0
+      ),
+      
+      # Match: replace SHSS = . if missing(sleep_cat, sleep_problems, siesta_60)
+      SHSS = if_else(
+        is.na(sleep_cat) |
+          is.na(g14_problemas_sue_o) |
+          is.na(siesta_60),
+        NA_real_,
+        as.numeric(SHSS)
+      ),
+      
       SHSS_group = case_when(
         SHSS == 0 ~ 0,
         SHSS == 1 ~ 1,
