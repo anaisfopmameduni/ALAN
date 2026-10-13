@@ -56,74 +56,33 @@ stopifnot("participant_id" %in% names(outdoor_dat))
 stopifnot(!anyDuplicated(indoor_dat$participant_id))
 stopifnot(!anyDuplicated(outdoor_dat$participant_id))
 
-# Confirm required analysis variables exist
-required_indoor_vars <- c(
-  "participant_id",
-  "bmi",
-  "diabetes_original",
-  "indoor_alan",
-  "simplified_healthy_sleep_score",
-  "age_years",
-  "sex",
-  "education"
-)
-
-required_outdoor_vars <- c(
-  "participant_id",
-  "bmi",
-  "diabetes_original",
-  "ms_gr_longest",
-  "age_years",
-  "sex",
-  "education"
-)
-
-
 # ------------------------------------------------------------
-# Count missingness by analysis population
+# Count available participants after removing missing values
 # ------------------------------------------------------------
 
-count_missing <- function(dat, outcome_diabetes, exposure_alan,
-                          include_sleep = FALSE) {
-  result <- dat %>%
-    summarise(
-      n = n_distinct(participant_id),
-      bmi_missing = sum(is.na(bmi)),
-      diabetes_missing = sum(is.na(.data[[outcome_diabetes]])),
-      either_outcome_missing = sum(
-        is.na(bmi) | is.na(.data[[outcome_diabetes]])
-      ),
-      alan_missing = sum(is.na(.data[[exposure_alan]])),
-      age_missing = sum(is.na(age_years)),
-      sex_missing = sum(is.na(sex)),
-      education_missing = sum(is.na(education))
-    )
+# Returns a label of the form:
+# n after removing missing values (number removed)
+make_available_label <- function(dat, variable) {
+  n_missing <- sum(is.na(dat[[variable]]))
+  n_available <- nrow(dat) - n_missing
   
-  if (include_sleep) {
-    result$sleep_missing <- sum(
-      is.na(dat$simplified_healthy_sleep_score)
-    )
-  }
-  
-  result
+  sprintf("%d (%d removed)", n_available, n_missing)
 }
 
-indoor_counts <- count_missing(
-  dat = indoor_dat,
-  outcome_diabetes = "diabetes_original",
-  exposure_alan = "indoor_alan",
-  include_sleep = TRUE
+indoor_bmi_label <- make_available_label(indoor_dat, "bmi")
+indoor_diabetes_label <- make_available_label(indoor_dat, "diabetes_original")
+indoor_shss_label <- make_available_label(
+  indoor_dat,
+  "simplified_healthy_sleep_score"
 )
+indoor_alan_label <- make_available_label(indoor_dat, "indoor_alan")
 
-outdoor_counts <- count_missing(
-  dat = outdoor_dat,
-  outcome_diabetes = "diabetes_original",
-  exposure_alan = "ms_gr_longest",
-  include_sleep = FALSE
-)
+outdoor_bmi_label <- make_available_label(outdoor_dat, "bmi")
+outdoor_diabetes_label <- make_available_label(outdoor_dat, "diabetes_original")
+outdoor_alan_label <- make_available_label(outdoor_dat, "ms_gr_longest")
 
-n_indoor <- indoor_counts$n
-n_outdoor <- outdoor_counts$n
+n_indoor <- n_distinct(indoor_dat$participant_id)
+n_outdoor <- n_distinct(outdoor_dat$participant_id)
 
 # ------------------------------------------------------------
 # Build flowchart
@@ -131,70 +90,60 @@ n_outdoor <- outdoor_counts$n
 
 flow <- DiagrammeR::grViz(sprintf("
 digraph participant_flow {
-  graph [layout = dot, rankdir = TB, nodesep = 0.35, ranksep = 0.45]
-  node [
-    shape = box,
-    style = 'rounded,filled',
-    fillcolor = '#F4F7FB',
-    color = '#52677D',
-    fontname = Arial,
-    fontsize = 10,
-    margin = '0.16,0.10'
-  ]
-  edge [color = '#52677D', arrowsize = 0.7]
+graph [layout = dot, rankdir = TB, nodesep = 0.35, ranksep = 0.45]
+node [
+shape = box,
+style = 'rounded,filled',
+fillcolor = '#F4F7FB',
+color = '#52677D',
+fontname = Arial,
+fontsize = 10,
+margin = '0.16,0.10'
+]
+edge [color = '#52677D', arrowsize = 0.7]
 
-  source [
-    label = 'Requested source dataset\\nN = %s'
-  ]
+source [
+label = 'Requested source dataset\\nN = %s'
+]
 
-  cancer_free [
-    label = 'Cancer cases excluded\\nRemoved: %s\\nCancer-free: n = %s'
-  ]
+cancer_free [
+label = 'Cancer cases excluded\\nRemoved: %s\\nCancer-free: n = %s'
+]
 
-  eligible [
-    label = 'Current/past night workers excluded\\nRemoved: %s\\nEligible baseline population: n = %s'
-  ]
+eligible [
+label = 'Current/past night workers excluded\\nRemoved: %s\\nEligible baseline population: n = %s'
+]
 
-  source -> cancer_free -> eligible
+source -> cancer_free -> eligible
 
-  indoor [
-    label = 'Study population 1: indoor ALAN\\nAll regions\\nn = %s'
-  ]
+indoor [
+label = 'Study population 1: indoor ALAN\\nAll regions\\nn = %s'
+]
 
-  outdoor [
-    label = 'Study population 2: outdoor ALAN\\nBarcelona and Madrid\\nn = %s'
-  ]
+outdoor [
+label = 'Study population 2: outdoor ALAN\\nBarcelona and Madrid\\nn = %s'
+]
 
-  eligible -> indoor
-  eligible -> outdoor
+eligible -> indoor
+eligible -> outdoor
 
-  indoor_analysis [
-    label = 'Indoor analysis variables\\n
-BMI missing: %s\\n
-Type 2 diabetes missing: %s\\n
-Missing either outcome: %s\\n
-Indoor ALAN missing: %s\\n
-Baseline sleep (SHSS) missing: %s\\n
-Age missing: %s\\n
-Sex missing: %s\\n
-Education missing: %s\\n
-Other confounders: missing category used'
-  ]
+indoor_analysis [
+label = 'Indoor analysis variables\\n
+BMI: %s\\n
+Type 2 diabetes: %s\\n
+SHSS: %s\\n
+Indoor ALAN: %s'
+]
 
-  outdoor_analysis [
-    label = 'Outdoor analysis variables\\n
-BMI missing: %s\\n
-Type 2 diabetes missing: %s\\n
-Missing either outcome: %s\\n
-Outdoor ALAN missing: %s\\n
-Age missing: %s\\n
-Sex missing: %s\\n
-Education missing: %s\\n
-Other confounders: missing category used'
-  ]
+outdoor_analysis [
+label = 'Outdoor analysis variables\\n
+BMI: %s\\n
+Type 2 diabetes: %s\\n
+Outdoor ALAN: %s'
+]
 
-  indoor -> indoor_analysis
-  outdoor -> outdoor_analysis
+indoor -> indoor_analysis
+outdoor -> outdoor_analysis
 }
 ",
 n_source,
@@ -204,21 +153,13 @@ n_night_workers_removed,
 n_eligible,
 n_indoor,
 n_outdoor,
-indoor_counts$bmi_missing,
-indoor_counts$diabetes_missing,
-indoor_counts$either_outcome_missing,
-indoor_counts$alan_missing,
-indoor_counts$sleep_missing,
-indoor_counts$age_missing,
-indoor_counts$sex_missing,
-indoor_counts$education_missing,
-outdoor_counts$bmi_missing,
-outdoor_counts$diabetes_missing,
-outdoor_counts$either_outcome_missing,
-outdoor_counts$alan_missing,
-outdoor_counts$age_missing,
-outdoor_counts$sex_missing,
-outdoor_counts$education_missing
+indoor_bmi_label,
+indoor_diabetes_label,
+indoor_shss_label,
+indoor_alan_label,
+outdoor_bmi_label,
+outdoor_diabetes_label,
+outdoor_alan_label
 ))
 
 flow
