@@ -65,7 +65,7 @@ indoor_table_dat <- indoor_dat %>%
     
     socioeconomic_score = make_factor(
       socioeconomic_score,
-      levels = c(1, 2, 3),
+      levels = c(2, 3, 1),
       labels = c("Low", "Medium", "High")
     ),
     
