@@ -29,6 +29,32 @@ make_factor <- function(x, levels, labels) {
   )
 }
 
+# Make Missing an explicit category, always displayed last.
+# This includes missing observations in categorical denominators.
+include_missing <- function(x) {
+  stopifnot(is.factor(x))
+  
+  existing_levels <- setdiff(levels(x), "Missing")
+  values <- as.character(x)
+  values[is.na(values)] <- "Missing"
+  
+  factor(
+    values,
+    levels = c(existing_levels, "Missing")
+  )
+}
+
+categorical_vars <- c(
+  "sex",
+  "education",
+  "socioeconomic_score",
+  "bmi_who",
+  "smoking_status",
+  "physical_activity",
+  "family_history_diabetes",
+  "chronotype_3"
+)
+
 # ------------------------------------------------------------
 # Prepare indoor-ALAN table data
 # ------------------------------------------------------------
@@ -200,6 +226,19 @@ outdoor_table_dat <- outdoor_dat %>%
   ) %>%
   filter(!is.na(outdoor_alan_group))
 
+# Include Missing in the denominator for all categorical variables.
+# Do not apply this to age, UVI or the exposure-group variables.
+
+indoor_table_dat <- indoor_table_dat %>%
+  mutate(
+    across(all_of(categorical_vars), include_missing)
+  )
+
+outdoor_table_dat <- outdoor_table_dat %>%
+  mutate(
+    across(all_of(categorical_vars), include_missing)
+  )
+
 # ------------------------------------------------------------
 # Table labels
 # ------------------------------------------------------------
@@ -245,13 +284,21 @@ table1_indoor <- indoor_table_dat %>%
       all_continuous() ~ 1,
       all_categorical() ~ c(0, 1)
     ),
+    type = list(
+      all_of(categorical_vars) ~ "categorical",
+      c(age_years, uvi) ~ "continuous"
+    ),
+    percent = "column",
     missing = "always",
     missing_text = "Missing",
+    missing_stat = "{N_miss} ({p_miss}%)",
     label = table_labels
   ) %>%
-  add_n(
-    statistic = "{N_nonmiss}",
-    col_label = "**N**"
+  modify_table_body(
+    ~ .x %>%
+      filter(
+        !(variable %in% categorical_vars & row_type == "missing")
+      )
   ) %>%
   modify_header(label ~ "**Characteristics, n (%)**") %>%
   modify_header(all_stat_cols() ~ "**{level}**\nN = {n}") %>%
@@ -285,17 +332,26 @@ table1_outdoor <- outdoor_table_dat %>%
       all_continuous() ~ 1,
       all_categorical() ~ c(0, 1)
     ),
+    type = list(
+      all_of(categorical_vars) ~ "categorical",
+      c(age_years, uvi) ~ "continuous"
+    ),
+    percent = "column",
     missing = "always",
     missing_text = "Missing",
+    missing_stat = "{N_miss} ({p_miss}%)",
     label = table_labels
   ) %>%
-  add_n(
-    statistic = "{N_nonmiss}",
-    col_label = "**N**"
+  modify_table_body(
+    ~ .x %>%
+      filter(
+        !(variable %in% categorical_vars & row_type == "missing")
+      )
   ) %>%
   modify_header(label ~ "**Characteristics, n (%)**") %>%
   modify_header(all_stat_cols() ~ "**{level}**\nN = {n}") %>%
   bold_labels()
+
 
 # ------------------------------------------------------------
 # Display tables
