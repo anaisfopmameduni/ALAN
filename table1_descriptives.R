@@ -146,16 +146,16 @@ indoor_table_dat <- indoor_dat %>%
 
 outdoor_table_dat <- outdoor_dat %>%
   mutate(
-    outdoor_alan_group = case_when(
-      to_numeric(ms_gr_longest_group) == 1 ~ "Very low",
-      to_numeric(ms_gr_longest_group) %in% c(2, 3, 4) ~ "Intermediate",
-      to_numeric(ms_gr_longest_group) == 5 ~ "Very high",
-      TRUE ~ NA_character_
-    ),
-    
-    outdoor_alan_group = factor(
-      outdoor_alan_group,
-      levels = c("Very low", "Intermediate", "Very high")
+    outdoor_alan_group = make_factor(
+      ms_gr_longest_group,
+      levels = c(1, 2, 3, 4, 5),
+      labels = c(
+        "Very low",
+        "Low",
+        "Intermediate",
+        "High",
+        "Very high"
+      )
     ),
     
     sex = make_factor(
@@ -238,6 +238,12 @@ outdoor_table_dat <- outdoor_table_dat %>%
   mutate(
     across(all_of(categorical_vars), include_missing)
   )
+
+# Total participants represented in each full exposure table.
+# These exclude missing ALAN exposure, but include missing
+# values in the characteristics being summarised.
+n_indoor_alan <- nrow(indoor_table_dat)
+n_outdoor_alan <- nrow(outdoor_table_dat)
 
 # ------------------------------------------------------------
 # Table labels
@@ -361,21 +367,77 @@ table1_indoor
 table1_outdoor
 
 # ------------------------------------------------------------
-# Merge indoor and outdoor descriptive tables
+# Full table for supplements: all five outdoor categories
 # ------------------------------------------------------------
 
-table1_combined <- tbl_merge(
-  tbls = list(table1_indoor, table1_outdoor),
-  tab_spanner = c(
-    "**Indoor ALAN levels**",
-    "**Outdoor ALAN levels**"
+exposure_spanners <- c(
+  sprintf(
+    "**Indoor ALAN levels (N = %s)**",
+    format(n_indoor_alan, big.mark = ",", trim = TRUE)
+  ),
+  sprintf(
+    "**Outdoor ALAN levels (N = %s)**",
+    format(n_outdoor_alan, big.mark = ",", trim = TRUE)
   )
 )
 
-table1_combined
+table1_combined_full <- tbl_merge(
+  tbls = list(
+    table1_indoor,
+    table1_outdoor
+  ),
+  tab_spanner = exposure_spanners
+)
 
 # ------------------------------------------------------------
-# Export combined table as an editable landscape Word document
+# Main table: hide outdoor Low and High columns
+#
+# Outdoor columns correspond to:
+# stat_1 = Very low
+# stat_2 = Low
+# stat_3 = Intermediate
+# stat_4 = High
+# stat_5 = Very high
+# ------------------------------------------------------------
+
+# Verify column names and labels if needed.
+show_header_names(table1_outdoor)
+
+stopifnot(
+  all(
+    paste0("stat_", 1:5) %in%
+      names(table1_outdoor$table_body)
+  )
+)
+
+table1_outdoor_main <- table1_outdoor %>%
+  modify_column_hide(
+    columns = c(stat_2, stat_4)
+  )
+
+table1_combined_main <- tbl_merge(
+  tbls = list(
+    table1_indoor,
+    table1_outdoor_main
+  ),
+  tab_spanner = exposure_spanners
+)
+
+table1_combined_main
+table1_combined_full
+
+table1_combined_main <- table1_combined_main %>%
+  modify_source_note(
+    source_note = paste(
+      "Outdoor Low and High exposure categories are omitted",
+      "from this display, not combined with Intermediate.",
+      "The overall outdoor N includes all five exposure categories.",
+      "The complete table is provided in the supplement."
+    )
+  )
+
+# ------------------------------------------------------------
+# Export main and supplementary tables to Word
 # ------------------------------------------------------------
 
 library(flextable)
@@ -383,28 +445,40 @@ library(officer)
 
 dir.create("output", showWarnings = FALSE, recursive = TRUE)
 
-table1_combined %>%
-  as_flex_table() %>%
-  flextable::fontsize(size = 8, part = "all") %>%
-  flextable::font(fontname = "Arial", part = "all") %>%
-  flextable::autofit() %>%
-  flextable::set_table_properties(
-    layout = "autofit",
-    width = 1
-  ) %>%
-  flextable::save_as_docx(
-    path = "output/Table1_indoor_outdoor_ALAN.docx",
-    pr_section = officer::prop_section(
-      page_size = officer::page_size(
-        orient = "landscape",
-        width = 11.7,
-        height = 8.3
-      ),
-      page_margins = officer::page_mar(
-        top = 0.5,
-        bottom = 0.5,
-        left = 0.5,
-        right = 0.5
+export_table1 <- function(table, path) {
+  table %>%
+    as_flex_table() %>%
+    flextable::fontsize(size = 8, part = "all") %>%
+    flextable::font(fontname = "Arial", part = "all") %>%
+    flextable::autofit() %>%
+    flextable::set_table_properties(
+      layout = "autofit",
+      width = 1
+    ) %>%
+    flextable::save_as_docx(
+      path = path,
+      pr_section = officer::prop_section(
+        page_size = officer::page_size(
+          orient = "landscape",
+          width = 8.3,
+          height = 11.7
+        ),
+        page_margins = officer::page_mar(
+          top = 0.5,
+          bottom = 0.5,
+          left = 0.5,
+          right = 0.5
+        )
       )
     )
-  )
+}
+
+export_table1(
+  table1_combined_main,
+  "output/Table1_indoor_outdoor_ALAN_main.docx"
+)
+
+export_table1(
+  table1_combined_full,
+  "output/Table1_indoor_outdoor_ALAN_supplement.docx"
+)
