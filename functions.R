@@ -84,19 +84,17 @@ prepare_analysis_data <- function(dat) {
         g13_tiempo_dormir >= 9  & g13_tiempo_dormir < 12 ~ 9,
         TRUE ~ NA_real_
       ),
-      sleep_cat_code = na_if(sleep_cat_code, 2),
       
       # Text labels used later by the SHSS code
       sleep_cat = case_when(
-        sleep_cat_code == 6 ~ "<=6h",
-        sleep_cat_code == 7 ~ "7h",
-        sleep_cat_code == 8 ~ "8h",
-        sleep_cat_code == 9 ~ ">=9h",
+        g13_tiempo_dormir >= 2 & g13_tiempo_dormir < 6 ~ "<6h",
+        g13_tiempo_dormir >= 6 & g13_tiempo_dormir <= 9 ~ "6-9h",
+        g13_tiempo_dormir > 9 & g13_tiempo_dormir < 12 ~ ">9h",
         TRUE ~ NA_character_
       ),
       sleep_cat = factor(
         sleep_cat,
-        levels = c("<=6h", "7h", "8h", ">=9h")
+        levels = c("<6h", "6-9h", ">9h")
       ),
       
       # Stata recodes sleep_cat codes 6, 7, 8, 9 to 2, 1, 1, 3
@@ -281,31 +279,25 @@ prepare_analysis_data <- function(dat) {
     mutate(
       SHSS = 0,
       SHSS = SHSS + if_else(
-        is.na(sleep_cat) | sleep_cat %in% c(">=9h"),
+        sleep_cat %in% c("<6h", ">9h"),
         1,
         0
       ),
       SHSS = SHSS + if_else(
-        !is.na(g14_problemas_sue_o) & g14_problemas_sue_o == 1,
+        (!is.na(g14_problemas_sue_o) & g14_problemas_sue_o == 1) |
+          (!is.na(g15_list_probl_medic) & g15_list_probl_medic == 1),
         1,
         0
       ),
       SHSS = SHSS + if_else(
-        !is.na(g15_list_probl_medic) & g15_list_probl_medic == 1,
+        !is.na(siesta_ultimate) & siesta_ultimate == 2,
         1,
         0
       ),
-      SHSS = SHSS + if_else(
-        !is.na(siesta_60) & siesta_60 == 1,
-        1,
-        0
-      ),
-      
-      # Match: replace SHSS = . if missing(sleep_cat, sleep_problems, siesta_60)
       SHSS = if_else(
         is.na(sleep_cat) |
           is.na(g14_problemas_sue_o) |
-          is.na(siesta_60),
+          is.na(siesta_ultimate),
         NA_real_,
         as.numeric(SHSS)
       ),
@@ -317,6 +309,10 @@ prepare_analysis_data <- function(dat) {
         TRUE ~ NA_real_
       )
     )
+  
+  stopifnot(
+    all(indoor_dat$simplified_healthy_sleep_score <= 3, na.rm = TRUE)
+  )
   
   # ----------------------------
   # Sleep latency and timing
