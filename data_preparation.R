@@ -80,7 +80,7 @@ family_history <- family_history_raw %>%
   summarise(
     fam_history_diabetes = if (
       all(is.na(j6_diabetes_clean))
-    ) NA_real_ else min(j6_diabetes_clean, na.rm = TRUE),
+    ) NA_real_ else max(j6_diabetes_clean, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -99,17 +99,20 @@ stopifnot(!anyDuplicated(master$id_study))
 
 eligible <- master %>%
   filter(
+    as.numeric(haven::zap_labels(tipocancer)) == 0,
     is.na(nightever) |
       as.numeric(haven::zap_labels(nightever)) != 1
   )
-# add cancer-status and any other exclusions here
 
 indoor_dat <- eligible
 
 outdoor_dat <- eligible %>%
   filter(area %in% c("BCN", "Madrid"))
 
-# Apply preprocessing separately
+stopifnot(nrow(indoor_dat) == 3420)
+stopifnot(nrow(outdoor_dat) == 1475)
+
+# Create derived variables before selecting/renaming them
 indoor_dat <- prepare_analysis_data(indoor_dat)
 outdoor_dat <- prepare_analysis_data(outdoor_dat)
 
