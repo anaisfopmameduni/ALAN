@@ -15,6 +15,26 @@ ntile_na <- function(x, n) {
 
 prepare_analysis_data <- function(dat) {
   
+  # create quantile-based grouping variables
+  dat <- dat %>%
+    mutate(
+      gra_fruits_group = ntile_na(gra_fruits, 3),
+      gra_vegetables_group = ntile_na(gra_vegetables, 3),
+      t_energy_group = ntile_na(t_energy, 3),
+      uvi_longest_group = ntile_na(uvi_longest, 3),
+      ndvi_500_longest_group = ntile_na(ndvi_500_longest, 3),
+      
+      MSIbg_group_c = ntile_na(msibg_current, 3),
+      MSIbg_group_l = ntile_na(msibg_longest, 3),
+      VSL_group_c = ntile_na(vlggr_current, 3),
+      VSL_group_l = ntile_na(vlggr_longest, 3),
+      
+      MSIgr_group_l = ntile_na(msigr_longest, 5),
+      ImpMSIgr_group_l = ntile_na(impmsigr_longest, 5),
+      Melgr_group_l = ntile_na(melgr_longest, 5),
+      ImpMelgr_group_l = ntile_na(impmelgr_longest, 5)
+    )
+  
   # ----------------------------
   # Missing-value regrouping
   # ----------------------------
@@ -23,10 +43,16 @@ prepare_analysis_data <- function(dat) {
     mutate(
       score_SE = replace(score_SE, is.na(score_SE), 9),
       fumador_ever = replace(fumador_ever, is.na(fumador_ever), 9),
-      mets_act_10_2_total_rec =
-        replace(mets_act_10_2_total_rec, is.na(mets_act_10_2_total_rec), 9),
-      uvi_longest_group =
-        replace(uvi_longest_group, is.na(uvi_longest_group), 9)
+      mets_act_10_2_total_rec = replace(
+        mets_act_10_2_total_rec,
+        is.na(mets_act_10_2_total_rec),
+        9
+      ),
+      uvi_longest_group = replace(
+        uvi_longest_group,
+        is.na(uvi_longest_group),
+        9
+      )
     )
   
   # ----------------------------
