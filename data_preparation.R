@@ -35,7 +35,18 @@ base_cohort <- read_dta_checked(
 
 sleep_variables <- read_dta_checked(
   "data/raw/sleep_variables.dta"
-)
+) 
+
+# get overlapping variables
+ overlap_vars <- intersect(
+       names(base_cohort),
+       names(sleep_variables)
+   ) %>%
+       setdiff("id_study")
+ 
+# drop overlapping variables, keep cohort ones (more complete observations)
+sleep_variables_clean <- sleep_variables %>%
+   select(-any_of(overlap_vars))
 
 alan_variables <- read_dta_checked(
   "data/raw/alan_variables.dta"
@@ -65,7 +76,7 @@ family_history <- family_history_raw %>%
 
 # create master dataset
 master <- base_cohort %>%
-  left_join(sleep_variables, by = "id_study") %>%
+  left_join(sleep_variables_clean, by = "id_study") %>%
   left_join(alan_variables, by = "id_study") %>%
   left_join(family_history, by = "id_study")
 
@@ -77,7 +88,10 @@ stopifnot(!anyDuplicated(master$id_study))
 # ============================================================
 
 eligible <- master %>%
-  filter(is.na(nightever) | nightever != 1)
+  filter(
+    is.na(nightever) |
+      as.numeric(haven::zap_labels(nightever)) != 1
+  )
 # add cancer-status and any other exclusions here
 
 indoor_dat <- eligible
