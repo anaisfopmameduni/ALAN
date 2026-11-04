@@ -52,6 +52,16 @@ alan_variables <- read_dta_checked(
   "data/raw/alan_variables.dta"
 )
 
+# remove overlapping alan vars as well
+overlap_alan <- intersect(
+  names(base_cohort),
+  names(alan_variables)
+) %>%
+  setdiff("id_study")
+
+alan_variables_clean <- alan_variables %>%
+  select(-any_of(overlap_alan))
+
 family_history_raw <- read_dta_checked(
   "data/raw/family_history_variables.dta"
 )
@@ -77,7 +87,7 @@ family_history <- family_history_raw %>%
 # create master dataset
 master <- base_cohort %>%
   left_join(sleep_variables_clean, by = "id_study") %>%
-  left_join(alan_variables, by = "id_study") %>%
+  left_join(alan_variables_clean, by = "id_study") %>%
   left_join(family_history, by = "id_study")
 
 stopifnot(nrow(master) == nrow(base_cohort))
@@ -169,6 +179,11 @@ outdoor_model <- build_model_dataset(outdoor_final)
 # ============================================================
 # Save datasets
 # ============================================================
+
+saveRDS(
+  master,
+  file = "data/master_analysis.rds"
+)
 
 saveRDS(
   indoor_final,
