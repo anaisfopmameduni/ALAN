@@ -29,36 +29,61 @@ read_dta_checked <- function(path, encoding = "windows-1252") {
   )
 }
 
-main <- read_dta_checked(
-  file.path(data_dir, "MCC ALAN BCNMDR Work.dta")
+base_cohort <- read_dta_checked(
+  "data/raw/base_cohort.dta"
 )
 
-all_work <- read_dta_checked(
-  file.path(data_dir, "MCC ALAN all WORK.dta")
+sleep_variables <- read_dta_checked(
+  "data/raw/sleep_variables.dta"
 )
 
-requested_variables <- read_dta_checked(
-  file.path(
-    original_dir,
-    "MCC_ALAN_obesity_analysis_requested_variables_20240918.dta"
+alan_variables <- read_dta_checked(
+  "data/raw/alan_variables.dta"
+)
+
+family_history_raw <- read_dta_checked(
+  "data/raw/family_history_variables.dta"
+)
+
+# pivot family history to get one row per id
+family_history <- family_history_raw %>%
+  mutate(
+    j6_diabetes_clean = case_when(
+      j6_diabetes %in% c(0, 9) ~ NA_real_,
+      j6_diabetes == 1 ~ 1,
+      j6_diabetes == 2 ~ 0,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  group_by(id_study) %>%
+  summarise(
+    fam_history_diabetes = if (
+      all(is.na(j6_diabetes_clean))
+    ) NA_real_ else min(j6_diabetes_clean, na.rm = TRUE),
+    .groups = "drop"
   )
-)
+
+# create master dataset
+master <- base_cohort %>%
+  left_join(sleep_variables, by = "id_study") %>%
+  left_join(alan_variables, by = "id_study") %>%
+  left_join(family_history, by = "id_study")
+
+stopifnot(nrow(master) == nrow(base_cohort))
+stopifnot(!anyDuplicated(master$id_study))
 
 # ============================================================
 # Build separate analysis datasets
 # ============================================================
 
-# Indoor: all provinces
-indoor_dat <- all_work %>%
-  filter(nightever != 1 | is.na(nightever))
+eligible <- master %>%
+  filter(is.na(nightever) | nightever != 1)
+# add cancer-status and any other exclusions here
 
-# Outdoor: Barcelona and Madrid only
-outdoor_dat <- main %>%
-  filter(nightever != 1 | is.na(nightever))
+indoor_dat <- eligible
 
-# Check target sample sizes
-stopifnot(nrow(indoor_dat) == 3420)
-stopifnot(nrow(outdoor_dat) == 1475)
+outdoor_dat <- eligible %>%
+  filter(area %in% c("BCN", "Madrid"))
 
 # Apply preprocessing separately
 indoor_dat <- prepare_analysis_data(indoor_dat)
