@@ -11,7 +11,7 @@ library(DiagrammeR)
 # ------------------------------------------------------------
 
 requested <- haven::read_dta(
-  "data/original_database/MCC_ALAN_obesity_analysis_requested_variables_20240918.dta",
+  "data/raw/base_cohort.dta",
   encoding = "latin1"
 )
 
@@ -103,7 +103,7 @@ margin = '0.16,0.10'
 edge [color = '#52677D', arrowsize = 0.7]
 
 source [
-label = 'Requested source dataset\\nN = %s'
+label = 'Base cohort\\nN = %s'
 ]
 
 cancer_free [
@@ -114,16 +114,15 @@ eligible [
 label = 'Current/past night workers excluded\\nRemoved: %s\\nEligible baseline population: n = %s'
 ]
 
-source -> cancer_free -> eligible
-
 indoor [
-label = 'Study population 1: indoor ALAN\\nAll regions\\nn = %s'
+label = 'Indoor ALAN analysis dataset\\nAll regions\\nn = %s'
 ]
 
 outdoor [
-label = 'Study population 2: outdoor ALAN\\nBarcelona and Madrid\\nn = %s'
+label = 'Outdoor ALAN analysis dataset\\nBarcelona and Madrid\\nn = %s'
 ]
 
+source -> cancer_free -> eligible
 eligible -> indoor
 eligible -> outdoor
 
