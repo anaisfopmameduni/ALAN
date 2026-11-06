@@ -99,23 +99,17 @@ prepare_analysis_data <- function(dat) {
   
   dat <- dat %>%
     mutate(
-      # Stata: egen sleep_cat = cut(g13_tiempo_dormir),
-      #                  at(2,6,7,8,9,12)
-      # Then: recode sleep_cat (2=.)
-      sleep_cat_code = case_when(
-        g13_tiempo_dormir >= 2  & g13_tiempo_dormir < 6  ~ 2,
-        g13_tiempo_dormir >= 6  & g13_tiempo_dormir < 7  ~ 6,
-        g13_tiempo_dormir >= 7  & g13_tiempo_dormir < 8  ~ 7,
-        g13_tiempo_dormir >= 8  & g13_tiempo_dormir < 9  ~ 8,
-        g13_tiempo_dormir >= 9  & g13_tiempo_dormir < 12 ~ 9,
-        TRUE ~ NA_real_
+      # Treat reported sleep duration below 3 hours as a mistake
+      g13_tiempo_dormir = if_else(
+        g13_tiempo_dormir < 3,
+        NA_real_,
+        g13_tiempo_dormir
       ),
       
-      # Text labels used later by the SHSS code
       sleep_cat = case_when(
-        g13_tiempo_dormir >= 2 & g13_tiempo_dormir < 6 ~ "<6h",
+        g13_tiempo_dormir >= 3 & g13_tiempo_dormir < 6 ~ "<6h",
         g13_tiempo_dormir >= 6 & g13_tiempo_dormir <= 9 ~ "6-9h",
-        g13_tiempo_dormir > 9 & g13_tiempo_dormir < 12 ~ ">9h",
+        g13_tiempo_dormir > 9 & g13_tiempo_dormir <= 12 ~ ">9h",
         TRUE ~ NA_character_
       ),
       sleep_cat = factor(
@@ -125,9 +119,9 @@ prepare_analysis_data <- function(dat) {
       
       # Stata recodes sleep_cat codes 6, 7, 8, 9 to 2, 1, 1, 3
       sleep_cat_3 = case_when(
-        sleep_cat_code == 6 ~ 2,
-        sleep_cat_code %in% c(7, 8) ~ 1,
-        sleep_cat_code == 9 ~ 3,
+        g13_tiempo_dormir >= 3 & g13_tiempo_dormir < 7 ~ 2,
+        g13_tiempo_dormir >= 7 & g13_tiempo_dormir < 9 ~ 1,
+        g13_tiempo_dormir >= 9 & g13_tiempo_dormir <= 12 ~ 3,
         TRUE ~ NA_real_
       ),
       
@@ -165,11 +159,10 @@ prepare_analysis_data <- function(dat) {
         siesta_60 == 1 & siesta_general != 0 ~ 2,
         TRUE ~ NA_real_
       )
-    ) %>%
-    select(-sleep_cat_code)
+    )
   
   shss_vars <- c(
-    "sleep_cat",
+    "g13_tiempo_dormir",
     "g14_problemas_sue_o",
     "g15_list_probl_medic",
     "siesta_60"
@@ -183,7 +176,11 @@ prepare_analysis_data <- function(dat) {
   
   cat(
     "Complete on Do-file SHSS fields:",
-    sum(complete.cases(dat[c("sleep_cat", "g14_problemas_sue_o", "siesta_60")])),
+    sum(complete.cases(dat[c(
+      "g13_tiempo_dormir",
+      "g14_problemas_sue_o",
+      "siesta_60"
+    )])),
     "\n"
   )
   
@@ -245,27 +242,7 @@ prepare_analysis_data <- function(dat) {
         TRUE ~ NA_real_
       )
     )
-  
-  # ----------------------------
-  # Tertiles and quintiles
-  # ----------------------------
-  
-  dat <- dat %>%
-    mutate(
-      gra_fruits_group = ntile_na(gra_fruits, 3),
-      gra_vegetables_group = ntile_na(gra_vegetables, 3),
-      t_energy_group = ntile_na(t_energy, 3),
-      uvi_longest_group = ntile_na(uvi_longest, 3),
-      ndvi_500_longest_group = ntile_na(ndvi_500_longest, 3),
-      MSIbg_group_c = ntile_na(msibg_current, 3),
-      MSIbg_group_l = ntile_na(msibg_longest, 3),
-      VSL_group_c = ntile_na(vlggr_current, 3),
-      VSL_group_l = ntile_na(vlggr_longest, 3),
-      MSIgr_group_l = ntile_na(msigr_longest, 5),
-      ImpMSIgr_group_l = ntile_na(impmsigr_longest, 5),
-      Melgr_group_l = ntile_na(melgr_longest, 5),
-      ImpMelgr_group_l = ntile_na(impmelgr_longest, 5)
-    )
+
   
   # ----------------------------
   # Combined ALAN
@@ -305,7 +282,7 @@ prepare_analysis_data <- function(dat) {
     mutate(
       SHSS = 0,
       SHSS = SHSS + if_else(
-        sleep_cat %in% c("<6h", ">9h"),
+        g13_tiempo_dormir < 6 | g13_tiempo_dormir > 9,
         1,
         0
       ),
@@ -321,7 +298,7 @@ prepare_analysis_data <- function(dat) {
         0
       ),
       SHSS = if_else(
-        is.na(sleep_cat) |
+        is.na(g13_tiempo_dormir) |
           is.na(g14_problemas_sue_o) |
           is.na(siesta_ultimate),
         NA_real_,
@@ -335,10 +312,6 @@ prepare_analysis_data <- function(dat) {
         TRUE ~ NA_real_
       )
     )
-  
-  stopifnot(
-    all(indoor_dat$simplified_healthy_sleep_score <= 3, na.rm = TRUE)
-  )
   
   # ----------------------------
   # Sleep latency and timing
