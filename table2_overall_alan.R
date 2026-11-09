@@ -2,31 +2,22 @@
 # Table 2: Indoor and outdoor ALAN associations
 #
 # TWO WORD TABLES:
-#   1. Obesity
-#   2. Diabetes
+# 1. Obesity
+# 2. Diabetes
 #
 # Each contains indoor and outdoor ALAN sections and:
-#   - Main-sample cases and non-cases, n (%)
-#   - Crude OR (95% CI)
-#   - Model 1: demographic adjustment
-#   - Model 2: + lifestyle adjustment
-#   - Model 3: + environmental adjustment
-#   - Model 4: + grouped SHSS
-#   - Model 4 cases and non-cases, n (%)
+# - Main-sample cases and non-cases, n (%)
+# - Model 1: demographic adjustment
+# - Model 2: + lifestyle adjustment
+# - Model 3: + environmental adjustment
 #
 # Models:
-#   Crude:   ALAN only
-#   Model 1: + age, sex, centre, education, SES
-#   Model 2: + smoking, physical activity
-#   Model 3: + continuous UVI
-#   Model 4: + grouped SHSS
+# Model 1: ALAN + age, sex, centre, education, SES
+# Model 2: Model 1 + smoking, physical activity
+# Model 3: Model 2 + continuous UVI
 #
-# Crude through Model 3 use a common sample within each
+# Models 1 through 3 use a common sample within each
 # exposure/outcome analysis.
-#
-# Model 4 additionally requires non-missing SHSS.
-# Model 3 is also refitted on the Model 4 sample as a
-# sensitivity check, saved to CSV but not shown in Word.
 #
 # Missing SES, smoking and physical activity are retained
 # as separate categories, including existing code 9.
@@ -91,13 +82,7 @@ environmental_covariates <- c(
   "uvi"
 )
 
-sleep_covariates <- c(
-  environmental_covariates,
-  "simplified_healthy_sleep_group"
-)
-
 main_model_sets <- list(
-  Crude = character(0),
   Model1 = demographic_covariates,
   Model2 = lifestyle_covariates,
   Model3 = environmental_covariates
@@ -171,7 +156,6 @@ prepare_table2_data <- function(
     "obesity_status",
     "diabetes_binary",
     environmental_covariates,
-    "simplified_healthy_sleep_group",
     exposure_variable
   ))
   
@@ -199,12 +183,6 @@ prepare_table2_data <- function(
   check_codes(dat$diabetes_binary, c(0, 1), "diabetes_binary")
   check_codes(dat$sex, c(1, 2), "sex")
   check_codes(dat$education, 1:4, "education")
-  
-  check_codes(
-    dat$simplified_healthy_sleep_group,
-    c(0, 1, 2),
-    "simplified_healthy_sleep_group"
-  )
   
   check_codes(
     dat[[exposure_variable]],
@@ -249,16 +227,6 @@ prepare_table2_data <- function(
       
       physical_activity = missing_category(
         physical_activity
-      ),
-      
-      simplified_healthy_sleep_group = factor(
-        simplified_healthy_sleep_group,
-        levels = c(0, 1, 2),
-        labels = c(
-          "Optimal sleep",
-          "Slightly unhealthy sleep",
-          "Unhealthy sleep"
-        )
       )
     )
 }
@@ -505,18 +473,11 @@ run_analysis <- function(
     exposure_labels,
     section) {
   
-  # Shared sample for Crude through Model 3.
+  # Shared sample for Models 1 through 3.
   main_sample <- make_analysis_sample(
     dat,
     outcome = outcome,
     covariates = environmental_covariates
-  )
-  
-  # Additional restriction for Model 4.
-  sleep_sample <- make_analysis_sample(
-    main_sample,
-    outcome = outcome,
-    covariates = sleep_covariates
   )
   
   models <- lapply(
@@ -531,29 +492,8 @@ run_analysis <- function(
     }
   )
   
-  models$Model4 <- fit_model(
-    sleep_sample,
-    outcome = outcome,
-    covariates = sleep_covariates,
-    reference = exposure_labels[1]
-  )
-  
-  # Same-sample sensitivity comparison for sleep adjustment.
-  models$Model3_sleep_sample <- fit_model(
-    sleep_sample,
-    outcome = outcome,
-    covariates = environmental_covariates,
-    reference = exposure_labels[1]
-  )
-  
   main_counts <- count_outcomes(
     main_sample,
-    outcome,
-    exposure_labels
-  )
-  
-  sleep_counts <- count_outcomes(
-    sleep_sample,
     outcome,
     exposure_labels
   )
@@ -567,18 +507,12 @@ run_analysis <- function(
         section = section,
         outcome = outcome_label,
         model = model_name,
-        sample = if_else(
-          model_name %in% c("Model4", "Model3_sleep_sample"),
-          "Sleep-complete",
-          "Main"
-        ),
         model_N = nobs(models[[model_name]]),
         .before = 1
       )
   }))
   
   estimates_wide <- results %>%
-    filter(model != "Model3_sleep_sample") %>%
     mutate(
       estimate = format_or_ci(
         OR,
@@ -603,28 +537,15 @@ run_analysis <- function(
       estimates_wide,
       by = "category"
     ) %>%
-    left_join(
-      sleep_counts %>%
-        select(
-          category,
-          sleep_cases = cases_display,
-          sleep_noncases = noncases_display
-        ),
-      by = "category"
-    ) %>%
     mutate(section = section, .before = 1) %>%
     select(
       section,
       category,
       main_cases,
       main_noncases,
-      Crude,
       Model1,
       Model2,
-      Model3,
-      Model4,
-      sleep_cases,
-      sleep_noncases
+      Model3
     )
   
   model_counts <- bind_rows(lapply(names(models), function(model_name) {
@@ -636,23 +557,13 @@ run_analysis <- function(
       section = section,
       outcome = outcome_label,
       model = model_name,
-      sample = if (
-        model_name %in% c("Model4", "Model3_sleep_sample")
-      ) {
-        "Sleep-complete"
-      } else {
-        "Main"
-      },
       N = length(response),
       cases = sum(response == 1),
       noncases = sum(response == 0)
     )
   }))
   
-  all_counts <- bind_rows(
-    main_counts %>% mutate(sample = "Main"),
-    sleep_counts %>% mutate(sample = "Sleep-complete")
-  ) %>%
+  all_counts <- main_counts %>%
     mutate(
       section = section,
       outcome = outcome_label,
@@ -663,7 +574,6 @@ run_analysis <- function(
     outcome = outcome_label,
     section = section,
     main_sample_ids = main_sample$participant_id,
-    sleep_sample_ids = sleep_sample$participant_id,
     models = models,
     results = results,
     counts = all_counts,
@@ -737,40 +647,6 @@ model_sample_sizes <- bind_rows(lapply(
 
 print(model_sample_sizes)
 
-write.csv(
-  numeric_results,
-  "output/table2_numeric_results.csv",
-  row.names = FALSE
-)
-
-write.csv(
-  outcome_counts,
-  "output/table2_cases_noncases_by_ALAN.csv",
-  row.names = FALSE
-)
-
-write.csv(
-  model_sample_sizes,
-  "output/table2_model_sample_sizes.csv",
-  row.names = FALSE
-)
-
-sleep_sensitivity_results <- numeric_results %>%
-  filter(
-    model %in% c("Model3_sleep_sample", "Model4")
-  )
-
-write.csv(
-  sleep_sensitivity_results,
-  "output/table2_sleep_same_sample_comparison.csv",
-  row.names = FALSE
-)
-
-saveRDS(
-  analyses,
-  "output/table2_models_and_analysis_ids.rds"
-)
-
 # ------------------------------------------------------------
 # Build the TWO display tables
 # ------------------------------------------------------------
@@ -800,17 +676,6 @@ diabetes_display <- make_display_data(
   "Diabetes"
 )
 
-write.csv(
-  obesity_display,
-  "output/table2_obesity_display.csv",
-  row.names = FALSE
-)
-
-write.csv(
-  diabetes_display,
-  "output/table2_diabetes_display.csv",
-  row.names = FALSE
-)
 
 # ------------------------------------------------------------
 # Format editable Word tables
@@ -836,18 +701,12 @@ make_word_table <- function(dat, outcome_label) {
   )
   
   notes <- c(
-    "Crude: ALAN exposure only.",
     "Model 1: ALAN + age, sex, centre, education and SES.",
     "Model 2: Model 1 + smoking and physical activity.",
     "Model 3: Model 2 + continuous UVI.",
-    "Model 4: Model 3 + grouped SHSS (optimal, slightly unhealthy, unhealthy).",
     paste(
-      "Main-sample counts describe Crude through Model 3,",
-      "which use identical participants within each ALAN section."
-    ),
-    paste(
-      "Model 4 uses participants additionally having non-missing SHSS;",
-      "its counts are shown separately."
+      "Counts describe Models 1 through 3, which use identical",
+      "participants within each ALAN section."
     ),
     paste(
       "Percentages are within each ALAN category and analysis sample.",
@@ -856,10 +715,6 @@ make_word_table <- function(dat, outcome_label) {
     paste(
       "Missing SES, smoking and physical activity are retained as",
       "separate categories. Other required missing values are excluded."
-    ),
-    paste(
-      "Changes from Model 3 to Model 4 may reflect both sleep adjustment",
-      "and a change in sample. A same-sample comparison is saved separately."
     ),
     "OR = odds ratio; CI = Wald 95% confidence interval; ref = reference.",
     "Nutrition, additional pollutants and combined ALAN are not included."
@@ -870,15 +725,11 @@ make_word_table <- function(dat, outcome_label) {
   ft <- set_header_labels(
     ft,
     category = "ALAN",
-    main_cases = "Cases\nn (%)",
-    main_noncases = "Non-cases\nn (%)",
-    Crude = "Crude",
+    main_cases = "Cases, n (%)",
+    main_noncases = "Non-cases, n (%)",
     Model1 = "Model 1",
     Model2 = "Model 2",
-    Model3 = "Model 3",
-    Model4 = "Model 4\n+ SHSS",
-    sleep_cases = "Cases\nn (%)",
-    sleep_noncases = "Non-cases\nn (%)"
+    Model3 = "Model 3"
   )
   
   ft <- add_header_row(
@@ -886,10 +737,9 @@ make_word_table <- function(dat, outcome_label) {
     values = c(
       "",
       "Main sample",
-      "OR (95% CI)",
-      "Model 4 sample"
+      "OR (95% CI)"
     ),
-    colwidths = c(1, 2, 5, 2)
+    colwidths = c(1, 2, 3)
   )
   
   ft <- ft %>%
