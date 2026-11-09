@@ -125,7 +125,7 @@ indoor_table_dat <- indoor_dat %>%
     
     family_history_diabetes = make_factor(
       family_history_diabetes,
-      levels = c(2, 1),
+      levels = c(1, 0),
       labels = c(
         "At least 1 relative",
         "No family history"
@@ -211,7 +211,7 @@ outdoor_table_dat <- outdoor_dat %>%
     
     family_history_diabetes = make_factor(
       family_history_diabetes,
-      levels = c(2, 1),
+      levels = c(1, 0),
       labels = c(
         "At least 1 relative",
         "No family history"
