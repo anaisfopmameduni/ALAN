@@ -22,13 +22,13 @@ raw <- requested %>%
     nightever_code = as.numeric(haven::zap_labels(nightever))
   )
 
-# Check participant IDs are unique
+# Check participant IDs are present and unique
+stopifnot(!anyNA(raw$id_study))
 stopifnot(!anyDuplicated(raw$id_study))
 
-# Baseline source counts
 n_source <- n_distinct(raw$id_study)
 
-# The existing script defines cancer-free controls as tipocancer == 0
+# Cancer-free controls
 cancer_free <- raw %>%
   filter(tipocancer_code == 0)
 
@@ -36,7 +36,7 @@ n_cancer_free <- n_distinct(cancer_free$id_study)
 n_cancer_cases_removed <- n_source - n_cancer_free
 
 # Exclude known current/past night workers.
-# Missing nightever values are retained, consistent with your current script.
+# Participants with missing night-work status are retained.
 eligible <- cancer_free %>%
   filter(is.na(nightever_code) | nightever_code != 1)
 
@@ -50,46 +50,81 @@ n_night_workers_removed <- n_cancer_free - n_eligible
 indoor_dat <- readRDS("data/cleaned_analysis_data_indoor.rds")
 outdoor_dat <- readRDS("data/cleaned_analysis_data_outdoor.rds")
 
-# Check IDs are present and unique
-stopifnot("participant_id" %in% names(indoor_dat))
-stopifnot("participant_id" %in% names(outdoor_dat))
+# Check required variables
+stopifnot(
+  all(
+    c("participant_id", "bmi", "diabetes_original", "indoor_alan") %in%
+      names(indoor_dat)
+  ),
+  all(
+    c("participant_id", "bmi", "diabetes_original", "ms_gr_longest") %in%
+      names(outdoor_dat)
+  )
+)
+
+# Check participant IDs
+stopifnot(!anyNA(indoor_dat$participant_id))
+stopifnot(!anyNA(outdoor_dat$participant_id))
 stopifnot(!anyDuplicated(indoor_dat$participant_id))
 stopifnot(!anyDuplicated(outdoor_dat$participant_id))
 
-# ------------------------------------------------------------
-# Count available participants after removing missing values
-# ------------------------------------------------------------
-
-# Count participants excluded due to BMI or diabetes missingness,
-# separately and combined
-make_bmi_diabetes_labels <- function(dat) {
-  bmi_missing <- is.na(dat$bmi)
-  diabetes_missing <- is.na(dat$diabetes_original)
-  
-  n_bmi_removed <- sum(bmi_missing)
-  n_diabetes_removed <- sum(diabetes_missing)
-  n_either_removed <- sum(bmi_missing | diabetes_missing)
-  n_available <- nrow(dat) - n_either_removed
-  
-  list(
-    available = n_available,
-    removed_total = n_either_removed,
-    removed_bmi = n_bmi_removed,
-    removed_diabetes = n_diabetes_removed
+# The all-region indoor dataset must represent the eligible baseline.
+if (!setequal(eligible$id_study, indoor_dat$participant_id)) {
+  stop(
+    "The eligible baseline IDs and all-region indoor dataset IDs differ. ",
+    "Resolve this difference before using a single shared exclusion node."
   )
 }
 
-indoor_bmi_diabetes <- make_bmi_diabetes_labels(indoor_dat)
-outdoor_bmi_diabetes <- make_bmi_diabetes_labels(outdoor_dat)
+stopifnot(
+  all(outdoor_dat$participant_id %in% indoor_dat$participant_id)
+)
 
-indoor_alan_missing <- sum(is.na(indoor_dat$indoor_alan))
-indoor_alan_available <- nrow(indoor_dat) - indoor_alan_missing
+# ------------------------------------------------------------
+# Shared BMI/diabetes exclusion before the population split
+# ------------------------------------------------------------
 
-outdoor_alan_missing <- sum(is.na(outdoor_dat$ms_gr_longest))
-outdoor_alan_available <- nrow(outdoor_dat) - outdoor_alan_missing
+bmi_missing <- is.na(indoor_dat$bmi)
+diabetes_missing <- is.na(indoor_dat$diabetes_original)
+
+n_bmi_removed <- sum(bmi_missing)
+n_diabetes_removed <- sum(diabetes_missing)
+
+# Participants missing both variables are counted only once.
+n_bmi_diabetes_removed <- sum(bmi_missing | diabetes_missing)
+
+complete_outcome_ids <- indoor_dat$participant_id[
+  !bmi_missing & !diabetes_missing
+]
+
+n_after_bmi_diabetes <- length(complete_outcome_ids)
+
+# Restrict both flowchart populations to the same retained IDs.
+# These changes do not overwrite the saved analysis datasets.
+indoor_dat <- indoor_dat %>%
+  filter(participant_id %in% complete_outcome_ids)
+
+outdoor_dat <- outdoor_dat %>%
+  filter(participant_id %in% complete_outcome_ids)
+
+# Check outcome availability is consistent across the two datasets.
+stopifnot(
+  !anyNA(outdoor_dat$bmi),
+  !anyNA(outdoor_dat$diabetes_original)
+)
 
 n_indoor <- n_distinct(indoor_dat$participant_id)
 n_outdoor <- n_distinct(outdoor_dat$participant_id)
+
+# ------------------------------------------------------------
+# ALAN exclusions after the BMI/diabetes exclusion
+# ------------------------------------------------------------
+
+indoor_alan_missing <- sum(is.na(indoor_dat$indoor_alan))
+indoor_alan_available <- n_indoor - indoor_alan_missing
+
+outdoor_alan_missing <- sum(is.na(outdoor_dat$ms_gr_longest))
+outdoor_alan_available <- n_outdoor - outdoor_alan_missing
 
 # ------------------------------------------------------------
 # Build flowchart
@@ -97,60 +132,64 @@ n_outdoor <- n_distinct(outdoor_dat$participant_id)
 
 flow <- DiagrammeR::grViz(sprintf("
 digraph participant_flow {
-graph [layout = dot, rankdir = TB, nodesep = 0.35, ranksep = 0.45]
-node [
-shape = box,
-style = 'rounded,filled',
-fillcolor = '#F4F7FB',
-color = '#52677D',
-fontname = Arial,
-fontsize = 10,
-margin = '0.16,0.10'
-]
-edge [color = '#52677D', arrowsize = 0.7]
+  graph [
+    layout = dot,
+    rankdir = TB,
+    nodesep = 0.35,
+    ranksep = 0.45
+  ]
 
-source [
-label = 'Base cohort\\nn = %s'
-]
+  node [
+    shape = box,
+    style = 'rounded,filled',
+    fillcolor = '#F4F7FB',
+    color = '#52677D',
+    fontname = Arial,
+    fontsize = 10,
+    margin = '0.16,0.10'
+  ]
 
-cancer_free [
-label = 'Cancer cases (%s) excluded\\nn = %s'
-]
+  edge [color = '#52677D', arrowsize = 0.7]
 
-eligible [
-label = 'Current/past night workers (%s) excluded\\nn = %s'
-]
+  source [
+    label = 'Base cohort\\nn = %s'
+  ]
 
-indoor [
-label = 'Indoor ALAN analysis population\\nAll regions\\nn = %s'
-]
+  cancer_free [
+    label = 'Cancer cases (%s) excluded\\nn = %s'
+  ]
 
-outdoor [
-label = 'Outdoor ALAN analysis population\\nBarcelona and Madrid\\nn = %s'
-]
+  eligible [
+    label = 'Current/past night workers (%s) excluded\\nn = %s'
+  ]
 
-source -> cancer_free -> eligible
-eligible -> indoor
-eligible -> outdoor
+  bmi_diabetes [
+    label = 'BMI or type 2 diabetes missing (%s) excluded\\n(BMI: %s; type 2 diabetes: %s)\\nn = %s'
+  ]
 
-indoor_bmi_diabetes [
-label = 'BMI or type 2 diabetes missing (%s) excluded\\n(BMI: %s; type 2 diabetes: %s)\\nn = %s'
-]
+  indoor [
+    label = 'Indoor ALAN analysis population\\nAll regions\\nn = %s'
+  ]
 
-indoor_alan_available [
-label = 'Indoor ALAN missing (%s) excluded\\nn = %s'
-]
+  outdoor [
+    label = 'Outdoor ALAN analysis population\\nBarcelona and Madrid\\nn = %s'
+  ]
 
-outdoor_bmi_diabetes [
-label = 'BMI or type 2 diabetes missing (%s) excluded\\n(BMI: %s; type 2 diabetes: %s)\\nn = %s'
-]
+  indoor_alan_available [
+    label = 'Indoor ALAN missing (%s) excluded\\nn = %s'
+  ]
 
-outdoor_alan_available [
-label = 'Outdoor ALAN missing (%s) excluded\\nn = %s'
-]
+  outdoor_alan_available [
+    label = 'Outdoor ALAN missing (%s) excluded\\nn = %s'
+  ]
 
-indoor -> indoor_bmi_diabetes -> indoor_alan_available
-outdoor -> outdoor_bmi_diabetes -> outdoor_alan_available
+  source -> cancer_free -> eligible -> bmi_diabetes
+
+  bmi_diabetes -> indoor
+  bmi_diabetes -> outdoor
+
+  indoor -> indoor_alan_available
+  outdoor -> outdoor_alan_available
 }
 ",
 n_source,
@@ -158,25 +197,24 @@ n_cancer_cases_removed,
 n_cancer_free,
 n_night_workers_removed,
 n_eligible,
+n_bmi_diabetes_removed,
+n_bmi_removed,
+n_diabetes_removed,
+n_after_bmi_diabetes,
 n_indoor,
 n_outdoor,
-indoor_bmi_diabetes$removed_total,
-indoor_bmi_diabetes$removed_bmi,
-indoor_bmi_diabetes$removed_diabetes,
-indoor_bmi_diabetes$available,
 indoor_alan_missing,
 indoor_alan_available,
-outdoor_bmi_diabetes$removed_total,
-outdoor_bmi_diabetes$removed_bmi,
-outdoor_bmi_diabetes$removed_diabetes,
-outdoor_bmi_diabetes$available,
 outdoor_alan_missing,
 outdoor_alan_available
 ))
 
 flow
 
-# Optional: save the interactive flowchart as HTML
+# ------------------------------------------------------------
+# Save interactive flowchart as HTML
+# ------------------------------------------------------------
+
 dir.create("output", showWarnings = FALSE, recursive = TRUE)
 
 htmlwidgets::saveWidget(
